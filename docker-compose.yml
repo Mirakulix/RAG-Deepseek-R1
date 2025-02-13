@@ -25,6 +25,8 @@ services:
         reservations:
           cpus: '0.5'
           memory: 1G
+    depends_on:
+      - chroma
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
