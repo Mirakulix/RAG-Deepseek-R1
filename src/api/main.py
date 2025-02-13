@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title="RAG System API")
 
 # Initialize ChromaDB client
-chroma_client = chromadb.HttpClient(host=os.getenv("CHROMA_HOST", "localhost"), port=8000)
+chroma_client = chromadb.HttpClient(host=os.getenv("CHROMA_HOST", "chroma"), port=8000)
 collection = chroma_client.create_collection("documents")
 
 class Query(BaseModel):
