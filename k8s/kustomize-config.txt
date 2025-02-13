@@ -1,0 +1,115 @@
+# base/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - deployments/model-deployment.yaml
+  - deployments/api-deployment.yaml
+  - deployments/ui-deployment.yaml
+  - services/model-service.yaml
+  - services/api-service.yaml
+  - services/ui-service.yaml
+  - configmaps/app-config.yaml
+  - secrets/app-secrets.yaml
+
+commonLabels:
+  app: rag-system
+  environment: base
+
+---
+# overlays/staging/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+bases:
+  - ../../base
+
+namePrefix: staging-
+
+commonLabels:
+  environment: staging
+
+patches:
+  - target:
+      kind: Deployment
+      name: model-deployment
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/memory
+        value: 8Gi
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/memory
+        value: 16Gi
+
+configMapGenerator:
+  - name: app-config
+    behavior: merge
+    literals:
+      - ENVIRONMENT=staging
+      - LOG_LEVEL=debug
+
+---
+# overlays/production/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+bases:
+  - ../../base
+
+namePrefix: prod-
+
+commonLabels:
+  environment: production
+
+patches:
+  - target:
+      kind: Deployment
+      name: model-deployment
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/memory
+        value: 16Gi
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/memory
+        value: 32Gi
+      - op: replace
+        path: /spec/replicas
+        value: 2
+
+  - target:
+      kind: Deployment
+      name: api-deployment
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 3
+
+configMapGenerator:
+  - name: app-config
+    behavior: merge
+    literals:
+      - ENVIRONMENT=production
+      - LOG_LEVEL=info
+      - ENABLE_CACHING=true
+
+secretGenerator:
+  - name: app-secrets
+    files:
+      - secrets/prod-secrets.env
+
+replicas:
+  - name: api-deployment
+    count: 3
+  - name: model-deployment
+    count: 2
+
+images:
+  - name: model
+    newName: your-registry.azurecr.io/model
+    newTag: latest
+  - name: api
+    newName: your-registry.azurecr.io/api
+    newTag: latest
+  - name: ui
+    newName: your-registry.azurecr.io/ui
+    newTag: latest

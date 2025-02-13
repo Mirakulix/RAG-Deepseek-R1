@@ -1,0 +1,83 @@
+# manifests/base/configmaps/resource-limits.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-limits
+  namespace: rag-system
+data:
+  api_memory_request: "256Mi"
+  api_memory_limit: "512Mi"
+  api_cpu_request: "100m"
+  api_cpu_limit: "200m"
+  
+  ui_memory_request: "128Mi"
+  ui_memory_limit: "256Mi"
+  ui_cpu_request: "50m"
+  ui_cpu_limit: "100m"
+  
+  model_memory_request_cpu: "1Gi"
+  model_memory_limit_cpu: "2Gi"
+  model_cpu_request: "500m"
+  model_cpu_limit: "1000m"
+  
+  model_memory_request_gpu: "4Gi"
+  model_memory_limit_gpu: "8Gi"
+  
+  chroma_memory_request: "512Mi"
+  chroma_memory_limit: "1Gi"
+  chroma_cpu_request: "200m"
+  chroma_cpu_limit: "400m"
+
+---
+# manifests/overlays/cpu-only/patches/resource-limits-cpu.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: model-deployment
+spec:
+  template:
+    spec:
+      containers:
+      - name: model
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+        env:
+        - name: DEVICE
+          value: "cpu"
+        - name: MODEL_QUANTIZATION
+          value: "int8"  # Aktiviere 8-bit Quantisierung für CPU
+        - name: INFERENCE_THREADS
+          value: "4"     # Begrenzte Thread-Anzahl
+
+---
+# manifests/overlays/gpu-enabled/patches/resource-limits-gpu.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: model-deployment
+spec:
+  template:
+    spec:
+      containers:
+      - name: model
+        resources:
+          requests:
+            memory: "4Gi"
+            cpu: "500m"
+            nvidia.com/gpu: "1"
+          limits:
+            memory: "8Gi"
+            cpu: "1000m"
+            nvidia.com/gpu: "1"
+        env:
+        - name: DEVICE
+          value: "cuda"
+        - name: MODEL_QUANTIZATION
+          value: "int8"  # Auch für GPU 8-bit Quantisierung
+        - name: CUDA_VISIBLE_DEVICES
+          value: "0"

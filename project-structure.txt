@@ -1,0 +1,57 @@
+rag-system/
+├── .env.example
+├── .gitignore
+├── .gitlab-ci.yml
+├── docker-compose.yml
+├── README.md
+├── requirements.txt
+├── .vscode/
+│   └── launch.json
+├── scripts/
+│   ├── deploy.sh
+│   ├── rollback.sh
+│   └── health_check.sh
+├── manifests/
+│   ├── base/
+│   │   ├── kustomization.yaml
+│   │   ├── deployments/
+│   │   │   ├── model-deployment.yaml
+│   │   │   ├── api-deployment.yaml
+│   │   │   └── ui-deployment.yaml
+│   │   ├── services/
+│   │   │   ├── model-service.yaml
+│   │   │   ├── api-service.yaml
+│   │   │   └── ui-service.yaml
+│   │   └── configmaps/
+│   │       ├── app-config.yaml
+│   │       └── resource-limits.yaml
+│   ├── overlays/
+│   │   ├── cpu-only/
+│   │   │   ├── kustomization.yaml
+│   │   │   └── patches/
+│   │   │       └── resource-limits-cpu.yaml
+│   │   └── gpu-enabled/
+│   │       ├── kustomization.yaml
+│   │       └── patches/
+│   │           └── resource-limits-gpu.yaml
+│   └── monitoring/
+│       ├── grafana-dashboards/
+│       └── prometheus-rules/
+├── src/
+│   ├── api/
+│   │   ├── Dockerfile
+│   │   ├── main.py
+│   │   └── requirements.txt
+│   ├── ui/
+│   │   ├── Dockerfile
+│   │   ├── app.py
+│   │   └── requirements.txt
+│   └── model/
+│       ├── Dockerfile
+│       ├── Dockerfile.cpu
+│       ├── model_server.py
+│       └── requirements.txt
+└── tests/
+    ├── api_tests/
+    ├── model_tests/
+    └── ui_tests/
