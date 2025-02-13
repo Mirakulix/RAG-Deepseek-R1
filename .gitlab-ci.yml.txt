@@ -1,0 +1,157 @@
+include:
+  - template: Security/SAST.gitlab-ci.yml
+  - template: Security/Container-Scanning.gitlab-ci.yml
+
+variables:
+  DOCKER_DRIVER: overlay2
+  KUBERNETES_CPU_REQUEST: 250m
+  KUBERNETES_CPU_LIMIT: 500m
+  KUBERNETES_MEMORY_REQUEST: 512Mi
+  KUBERNETES_MEMORY_LIMIT: 1Gi
+
+stages:
+  - test
+  - security
+  - build
+  - deploy
+  - monitor
+
+# Test Stage
+.test:
+  image: python:3.10-slim
+  before_script:
+    - pip install -r requirements.txt
+    - pip install pytest pytest-cov pytest-asyncio
+
+unit_tests:
+  extends: .test
+  stage: test
+  script:
+    - pytest tests/unit --cov=src/
+  coverage: '/TOTAL.+ ([0-9]{1,3}%)/'
+  artifacts:
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage.xml
+
+integration_tests:
+  extends: .test
+  stage: test
+  services:
+    - name: chromadb/chroma:latest
+    - name: redis:latest
+  script:
+    - pytest tests/integration
+
+# Security Stage
+security_scan:
+  stage: security
+  script:
+    - trivy image $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "staging"
+
+dependency_scan:
+  stage: security
+  script:
+    - safety check
+
+# Build Stage
+.build:
+  image: docker:20.10.16
+  services:
+    - docker:20.10.16-dind
+  before_script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+
+build_model:
+  extends: .build
+  stage: build
+  script:
+    - docker build -t $CI_REGISTRY_IMAGE/model:$CI_COMMIT_SHA ./src/model
+    - docker push $CI_REGISTRY_IMAGE/model:$CI_COMMIT_SHA
+
+build_api:
+  extends: .build
+  stage: build
+  script:
+    - docker build -t $CI_REGISTRY_IMAGE/api:$CI_COMMIT_SHA ./src/api
+    - docker push $CI_REGISTRY_IMAGE/api:$CI_COMMIT_SHA
+
+build_ui:
+  extends: .build
+  stage: build
+  script:
+    - docker build -t $CI_REGISTRY_IMAGE/ui:$CI_COMMIT_SHA ./src/ui
+    - docker push $CI_REGISTRY_IMAGE/ui:$CI_COMMIT_SHA
+
+# Deploy Stage
+.deploy:
+  image: bitnami/kubectl:latest
+  before_script:
+    - kubectl config use-context $KUBE_CONTEXT
+
+deploy_staging:
+  extends: .deploy
+  stage: deploy
+  script:
+    - ./scripts/deploy.sh staging
+  environment:
+    name: staging
+  rules:
+    - if: $CI_COMMIT_BRANCH == "staging"
+
+deploy_production:
+  extends: .deploy
+  stage: deploy
+  script:
+    - ./scripts/deploy.sh production
+  environment:
+    name: production
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+  when: manual
+
+# Monitoring Stage
+.monitor:
+  image: curlimages/curl
+  variables:
+    PROMETHEUS_URL: http://prometheus-server:9090
+
+check_deployment:
+  extends: .monitor
+  stage: monitor
+  script:
+    - |
+      # Check all services are running
+      for service in model-service api-service ui-service; do
+        response=$(curl -s $PROMETHEUS_URL/api/v1/query?query=up{service="$service"})
+        if [[ $(echo $response | jq '.data.result[0].value[1]') != "1" ]]; then
+          echo "Service $service is not running"
+          exit 1
+        fi
+      done
+      
+      # Check error rates
+      error_rate=$(curl -s $PROMETHEUS_URL/api/v1/query?query=rate\(http_requests_total{status=~"5.."}[5m]\))
+      if [[ $(echo $error_rate | jq '.data.result[0].value[1]') > "0.01" ]]; then
+        echo "Error rate too high"
+        exit 1
+      fi
+      
+      # Check latency
+      latency=$(curl -s $PROMETHEUS_URL/api/v1/query?query=histogram_quantile\(0.95,rate\(http_request_duration_seconds_bucket[5m]\)\))
+      if [[ $(echo $latency | jq '.data.result[0].value[1]') > "2" ]]; then
+        echo "Latency too high"
+        exit 1
+      fi
+
+rollback:
+  extends: .deploy
+  stage: .post
+  script:
+    - ./scripts/rollback.sh
+  when: manual
+  environment:
+    name: production
