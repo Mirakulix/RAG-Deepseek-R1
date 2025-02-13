@@ -1,0 +1,115 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: rag-system-monitor
+  namespace: monitoring
+spec:
+  selector:
+    matchLabels:
+      app: rag-system
+  namespaceSelector:
+    matchNames:
+      - rag-system
+  endpoints:
+    - port: metrics
+      interval: 15s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: rag-system-alerts
+  namespace: monitoring
+spec:
+  groups:
+    - name: rag-system
+      rules:
+        - alert: HighLatency
+          expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="rag-system"}[5m])) > 2
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: High latency in RAG system
+            description: 95th percentile latency is above 2 seconds
+
+        - alert: HighErrorRate
+          expr: rate(http_requests_total{job="rag-system",status=~"5.."}[5m]) / rate(http_requests_total{job="rag-system"}[5m]) > 0.05
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: High error rate in RAG system
+            description: Error rate is above 5%
+
+        - alert: ModelMemoryHigh
+          expr: container_memory_usage_bytes{container="deepseek-model"} > 14e9
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: Model memory usage high
+            description: DeepSeek model using more than 14GB memory
+
+        - alert: GPUUtilizationHigh
+          expr: nvidia_gpu_duty_cycle > 90
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: High GPU utilization
+            description: GPU utilization above 90% for 10 minutes
+---
+apiVersion: integreatly.org/v1alpha1
+kind: GrafanaDashboard
+metadata:
+  name: rag-system-dashboard
+  namespace: monitoring
+spec:
+  json: |
+    {
+      "dashboard": {
+        "title": "RAG System Dashboard",
+        "panels": [
+          {
+            "title": "Request Latency",
+            "type": "graph",
+            "datasource": "Prometheus",
+            "targets": [
+              {
+                "expr": "histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job=\"rag-system\"}[5m]))"
+              }
+            ]
+          },
+          {
+            "title": "Error Rate",
+            "type": "graph",
+            "datasource": "Prometheus",
+            "targets": [
+              {
+                "expr": "rate(http_requests_total{job=\"rag-system\",status=~\"5..\"}[5m]) / rate(http_requests_total{job=\"rag-system\"}[5m])"
+              }
+            ]
+          },
+          {
+            "title": "Model Memory Usage",
+            "type": "gauge",
+            "datasource": "Prometheus",
+            "targets": [
+              {
+                "expr": "container_memory_usage_bytes{container=\"deepseek-model\"}"
+              }
+            ]
+          },
+          {
+            "title": "GPU Utilization",
+            "type": "gauge",
+            "datasource": "Prometheus",
+            "targets": [
+              {
+                "expr": "nvidia_gpu_duty_cycle"
+              }
+            ]
+          }
+        ]
+      }
+    }

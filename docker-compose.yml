@@ -1,0 +1,117 @@
+services:
+  model:
+    build:
+      context: ./src/model
+      # dockerfile: Dockerfile.cpu  # Spezifisches CPU Dockerfile
+      dockerfile: Dockerfile.model.server
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./models:/app/models
+    environment:
+      - MODEL_PATH=/app/models/deepseek-r1
+      - DEVICE=cpu
+      - MODEL_QUANTIZATION=int8
+      - INFERENCE_THREADS=4
+      - USE_TORCH_COMPILE=true    # PyTorch 2.0 Optimierungen
+      - TOKENIZERS_PARALLELISM=false
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  api:
+    build:
+      context: ./src/api
+      dockerfile: Dockerfile.api
+    ports:
+      - "8000:8000"
+    environment:
+      - MODEL_SERVICE_URL=http://model:8080
+      - CHROMA_HOST=chroma
+      - MAX_WORKERS=2
+      - WORKER_THREADS=4
+    deploy:
+      resources:
+        limits:
+          cpus: '0.2'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 256M
+    depends_on:
+      - model
+      - chroma
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  ui:
+    build:
+      context: ./src/ui
+      dockerfile: Dockerfile.ui
+    ports:
+      - "8501:8501"
+    environment:
+      - API_URL=http://api:8000
+      - STREAMLIT_SERVER_MAX_UPLOAD_SIZE=5
+      - STREAMLIT_BROWSER_GATHER_USAGE_STATS=false
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: 256M
+        reservations:
+          cpus: '0.05'
+          memory: 128M
+    depends_on:
+      - api
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  chroma:
+    image: chromadb/chroma:latest
+    ports:
+      - "8001:8000"
+    volumes:
+      - chroma-data:/chroma/data
+    environment:
+      - CHROMA_DB_IMPL=duckdb+parquet
+      - CHROMA_PERSISTENCE_DIRECTORY=/chroma/data
+      - ANONYMIZED_TELEMETRY=false
+    deploy:
+      resources:
+        limits:
+          cpus: '0.4'
+          memory: 1G
+        reservations:
+          cpus: '0.2'
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/heartbeat"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  chroma-data:
+
+networks:
+  default:
+    driver: bridge
+    driver_opts:
+      com.docker.network.driver.mtu: 1450  # Optimierte MTU für bessere Performance

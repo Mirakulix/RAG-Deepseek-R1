@@ -1,0 +1,56 @@
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: rag-system-quota
+  namespace: rag-system
+spec:
+  hard:
+    # Compute Resource Quotas
+    requests.cpu: "16"
+    requests.memory: "32Gi"
+    limits.cpu: "32"
+    limits.memory: "64Gi"
+    requests.nvidia.com/gpu: "2"
+    
+    # Object Count Quotas
+    pods: "30"
+    services: "10"
+    secrets: "20"
+    configmaps: "20"
+    persistentvolumeclaims: "10"
+    
+    # Storage Quotas
+    requests.storage: "100Gi"
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: rag-system-limits
+  namespace: rag-system
+spec:
+  limits:
+  - type: Container
+    default:
+      memory: "512Mi"
+      cpu: "500m"
+    defaultRequest:
+      memory: "256Mi"
+      cpu: "200m"
+    max:
+      memory: "16Gi"
+      cpu: "8"
+    min:
+      memory: "64Mi"
+      cpu: "100m"
+  - type: Pod
+    max:
+      memory: "32Gi"
+      cpu: "16"
+    min:
+      memory: "128Mi"
+      cpu: "200m"
+  - type: PersistentVolumeClaim
+    min:
+      storage: "1Gi"
+    max:
+      storage: "50Gi"

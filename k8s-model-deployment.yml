@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deepseek-model
+  namespace: rag-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: deepseek-model
+  template:
+    metadata:
+      labels:
+        app: deepseek-model
+    spec:
+      containers:
+      - name: deepseek-model
+        image: your-registry/deepseek-model:latest
+        resources:
+          requests:
+            memory: "8Gi"
+            cpu: "4"
+            nvidia.com/gpu: "1"
+          limits:
+            memory: "16Gi"
+            cpu: "8"
+            nvidia.com/gpu: "1"
+        ports:
+        - containerPort: 8080
+        env:
+        - name: MODEL_PATH
+          value: "/models/deepseek-r1"
+        volumeMounts:
+        - name: model-storage
+          mountPath: /models
+      volumes:
+      - name: model-storage
+        persistentVolumeClaim:
+          claimName: model-pvc
